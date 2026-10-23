@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { GameEngine } from '../game/gameEngine';
+import type { GameEngine } from '../game/gameEngine';
 import {
   loadSaveSlots,
   loadSuspendData,
@@ -17,7 +17,7 @@ import { X, Save, Play, Trash2, Download, Upload } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
 
 interface Props {
-  engine: GameEngine;
+  engine?: GameEngine | null;
   isOpen: boolean;
   onClose: () => void;
   onLoadRun: (slotId: number) => void;
@@ -37,6 +37,7 @@ export const SaveLoadModal: React.FC<Props> = ({ engine, isOpen, onClose, onLoad
   if (!isOpen) return null;
 
   const handleSaveCurrent = (slotId: number) => {
+    if (!engine) return;
     saveSuspendData(slotId, {
       player: engine.player,
       floor: engine.floor,
@@ -166,13 +167,15 @@ export const SaveLoadModal: React.FC<Props> = ({ engine, isOpen, onClose, onLoad
 
               {/* Action Buttons for this slot */}
               <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  onClick={() => handleSaveCurrent(slot.slotId)}
-                  className="bg-amber-700 hover:bg-amber-600 border border-white/40 px-2.5 py-1 rounded text-xs text-white flex items-center gap-1 whitespace-nowrap transition active:scale-95 cursor-pointer"
-                >
-                  <Save size={13} />
-                  <span>ここにセーブ</span>
-                </button>
+                {engine && (
+                  <button
+                    onClick={() => handleSaveCurrent(slot.slotId)}
+                    className="bg-amber-700 hover:bg-amber-600 border border-white/40 px-2.5 py-1 rounded text-xs text-white flex items-center gap-1 whitespace-nowrap transition active:scale-95 cursor-pointer"
+                  >
+                    <Save size={13} />
+                    <span>ここにセーブ</span>
+                  </button>
+                )}
 
                 {slot.hasSuspendData && (
                   <>
