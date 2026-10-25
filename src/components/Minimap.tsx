@@ -12,14 +12,28 @@ interface Props {
   engine: GameEngine;
   expanded?: boolean;
   onToggleExpand?: () => void;
+  /** Mobile compact map: crop a window around the hero and keep it centered. */
+  follow?: boolean;
 }
 
-export const Minimap: React.FC<Props> = ({ engine, expanded = false, onToggleExpand }) => {
+export const Minimap: React.FC<Props> = ({ engine, expanded = false, onToggleExpand, follow = false }) => {
   const { floor, player } = engine;
-  const scale = expanded ? 7 : 3.8;
+  const followMode = follow && !expanded;
+  const scale = expanded ? 7 : followMode ? 8 : 3.8;
+
+  // In follow mode show a local window centred on the player, clamped to the map edges.
+  const VIEW_TILES_X = 15;
+  const VIEW_TILES_Y = 13;
+  const viewW = Math.min(floor.width, VIEW_TILES_X);
+  const viewH = Math.min(floor.height, VIEW_TILES_Y);
+  const viewX = Math.max(0, Math.min(floor.width - viewW, player.x - Math.floor(viewW / 2)));
+  const viewY = Math.max(0, Math.min(floor.height - viewH, player.y - Math.floor(viewH / 2)));
 
   const mapW = floor.width * scale;
   const mapH = floor.height * scale;
+  const viewBox = followMode
+    ? `${viewX * scale} ${viewY * scale} ${viewW * scale} ${viewH * scale}`
+    : undefined;
 
   return (
     <div
@@ -39,9 +53,17 @@ export const Minimap: React.FC<Props> = ({ engine, expanded = false, onToggleExp
       )}
 
       <svg
-        width={mapW}
-        height={mapH}
-        className={`block overflow-hidden h-auto ${expanded ? '' : 'max-w-[32vw] sm:max-w-[11rem] max-h-[28vh]'}`}
+        width={followMode ? undefined : mapW}
+        height={followMode ? undefined : mapH}
+        viewBox={viewBox}
+        preserveAspectRatio="xMidYMid meet"
+        className={`block overflow-hidden h-auto ${
+          expanded
+            ? ''
+            : followMode
+            ? 'w-[9.5rem] max-w-[38vw] max-h-[24vh]'
+            : 'max-w-[32vw] sm:max-w-[11rem] max-h-[28vh]'
+        }`}
       >
         {/* Render explored floor / corridors */}
         {floor.tiles.map((row, y) =>
@@ -122,9 +144,11 @@ export const Minimap: React.FC<Props> = ({ engine, expanded = false, onToggleExp
         <div className="mt-1 flex flex-col items-center text-center leading-tight pointer-events-none">
           <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-300">
             <Maximize2 size={10} />
-            <span>地図拡大</span>
+            <span>{followMode ? '現在地' : '地図拡大'}</span>
           </span>
-          <span className="text-[9px] text-white/70">タップで拡大</span>
+          <span className="text-[9px] text-white/70">
+            {followMode ? 'タップで全体図' : 'タップで拡大'}
+          </span>
         </div>
       )}
 

@@ -3,17 +3,26 @@
  * Displays real-time combat messages, story events, and level-ups with retro styling.
  */
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { LogMessage } from '../types/game';
 
 interface Props {
   logs: LogMessage[];
   expanded?: boolean;
   onToggleExpand?: () => void;
+  /** When set, the box shows briefly after each new log, then fades out (mobile). */
+  autoHideMs?: number;
 }
 
-export const LogBox: React.FC<Props> = ({ logs, expanded = false, onToggleExpand }) => {
+export const LogBox: React.FC<Props> = ({
+  logs,
+  expanded = false,
+  onToggleExpand,
+  autoHideMs,
+}) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [isVisible, setIsVisible] = useState<boolean>(true);
+  const latestLogId = logs[0]?.id;
 
   useEffect(() => {
     if (containerRef.current) {
@@ -21,14 +30,27 @@ export const LogBox: React.FC<Props> = ({ logs, expanded = false, onToggleExpand
     }
   }, [logs]);
 
+  // Mobile ticker: show for a few seconds after a new log, but stay open while expanded.
+  useEffect(() => {
+    if (!autoHideMs) {
+      setIsVisible(true);
+      return;
+    }
+    setIsVisible(true);
+    if (expanded) return;
+    const timer = window.setTimeout(() => setIsVisible(false), autoHideMs);
+    return () => window.clearTimeout(timer);
+  }, [latestLogId, autoHideMs, expanded]);
+
   // Display all logs; in collapsed mode, height is constrained to 2 lines with scrollbar
   const displayLogs = logs;
 
   return (
     <div
-      className={`bg-black/95 border-2 border-white/80 rounded p-2 text-white font-['DotGothic16'] shadow-xl transition-all select-none ${
+      aria-hidden={autoHideMs ? !isVisible : undefined}
+      className={`bg-black/95 border-2 border-white/80 rounded p-2 text-white font-['DotGothic16'] shadow-xl select-none transition-all duration-500 ${
         expanded ? 'fixed inset-x-4 bottom-20 z-40 max-h-60' : 'log-box h-[4.75rem] sm:h-[5.5rem]'
-      }`}
+      } ${autoHideMs && !isVisible ? 'opacity-0 pointer-events-none -translate-y-1' : 'opacity-100 pointer-events-auto'}`}
     >
       <div className="log-header flex items-center justify-between border-b border-white/20 pb-1 mb-1 text-[11px] text-white/60 shrink-0">
         <span className="font-bold text-amber-300">【 冒険の記録 】</span>

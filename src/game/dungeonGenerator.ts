@@ -232,8 +232,13 @@ export function generateDungeonFloor(floorNumber: number): {
     }
   }
 
-  // Place Items
+  // Place Items (never stack two items, and keep the 25F boss tile clear)
   const items: { item: Item; x: number; y: number }[] = [];
+  const occupiedItemTiles = new Set<string>();
+  if (floorNumber === 25) {
+    // Baramos spawns directly above the stairs; reserve that tile.
+    occupiedItemTiles.add(`${stairsPos.x},${stairsPos.y - 1}`);
+  }
   if (floorNumber === 30) {
     // Sacred battle aids placed on the side altars of Zoma's throne room
     const mainRoom = rooms[0];
@@ -252,16 +257,21 @@ export function generateDungeonFloor(floorNumber: number): {
         if (mh) targetRoom = mh;
       }
 
-      const pos = getRandomEmptyInRoom(tiles, targetRoom, playerStart, stairsPos);
+      const pos = getRandomEmptyInRoom(tiles, targetRoom, playerStart, stairsPos, occupiedItemTiles);
       if (pos) {
         const item = getRandomFloorItem(floorNumber);
         items.push({ item, x: pos.x, y: pos.y });
+        occupiedItemTiles.add(`${pos.x},${pos.y}`);
       }
     }
   }
 
-  // Place Monsters
+  // Place Monsters (avoid tiles already holding an item or another monster)
   const monsters: Monster[] = [];
+  const occupiedMonsterTiles = new Set<string>(occupiedItemTiles);
+  for (const item of items) {
+    occupiedMonsterTiles.add(`${item.x},${item.y}`);
+  }
   if (floorNumber === 25) {
     // Baramos Boss Room
     const boss = createMonsterInstance('baramos', stairsPos.x, stairsPos.y - 1, floorNumber);
@@ -274,7 +284,7 @@ export function generateDungeonFloor(floorNumber: number): {
     const boss = createMonsterInstance('zoma', zomaX, zomaY, floorNumber);
     monsters.push(boss);
   } else {
-    const monsterCount = isMonsterHouseFloor ? 12 : 4 + Math.floor(Math.random() * 4);
+    const monsterCount = isMonsterHouseFloor ? 12 : 5 + Math.floor(Math.random() * 4);
     for (let i = 0; i < monsterCount; i++) {
       let targetRoom = rooms[Math.floor(Math.random() * rooms.length)];
       let isSleeping = false;
@@ -292,12 +302,13 @@ export function generateDungeonFloor(floorNumber: number): {
         targetRoom = rooms[1];
       }
 
-      const pos = getRandomEmptyInRoom(tiles, targetRoom, playerStart, stairsPos);
+      const pos = getRandomEmptyInRoom(tiles, targetRoom, playerStart, stairsPos, occupiedMonsterTiles);
       if (pos) {
         const defId = getSpawnMonsterDefId(floorNumber);
         const monster = createMonsterInstance(defId, pos.x, pos.y, floorNumber);
         if (isSleeping) monster.sleeping = 999;
         monsters.push(monster);
+        occupiedMonsterTiles.add(`${pos.x},${pos.y}`);
       }
     }
   }
@@ -532,14 +543,16 @@ function getRandomEmptyInRoom(
   tiles: Tile[][],
   room: Room,
   start: Position,
-  stairs: Position
+  stairs: Position,
+  blocked?: Set<string>
 ): Position | null {
-  for (let attempts = 0; attempts < 50; attempts++) {
+  for (let attempts = 0; attempts < 80; attempts++) {
     const x = room.x + Math.floor(Math.random() * room.width);
     const y = room.y + Math.floor(Math.random() * room.height);
 
     if (x === start.x && y === start.y) continue;
     if (x === stairs.x && y === stairs.y) continue;
+    if (blocked?.has(`${x},${y}`)) continue;
     if (tiles[y][x].type === 'floor' && !tiles[y][x].trap) {
       return { x, y };
     }

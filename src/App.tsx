@@ -69,7 +69,7 @@ export default function App() {
   };
 
   return (
-    <div className="w-screen h-screen overflow-hidden bg-black flex flex-col font-['DotGothic16'] text-white">
+    <div className="w-full h-[100dvh] max-h-[100dvh] overflow-hidden bg-black flex flex-col font-['DotGothic16'] text-white">
       {screen === 'title' ? (
         <>
           <TitleScreen

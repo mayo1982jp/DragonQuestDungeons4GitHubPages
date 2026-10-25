@@ -53,8 +53,37 @@ export const DungeonCanvas: React.FC<Props> = ({ engine, onTileClick, tileSize =
 
       // Camera calculation centered on player
       const activeTileSize = currentTileSize;
-      const cameraX = Math.round(width / 2 - (engine.player.x + 0.5) * activeTileSize);
-      const cameraY = Math.round(height / 2 - (engine.player.y + 0.5) * activeTileSize);
+      const now = Date.now();
+
+      // Screen shake & flash driven by the strongest active spell effect
+      let shakeStrength = 0;
+      let flashStrength = 0;
+      let flashColor = '#ffffff';
+      for (const effect of engine.visualEffects) {
+        const progress = (now - effect.createdAt) / effect.duration;
+        if (progress < 0 || progress > 1) continue;
+        const fade = 1 - progress;
+        if (effect.type === 'explosion') {
+          shakeStrength = Math.max(shakeStrength, 7 * fade);
+          flashStrength = Math.max(flashStrength, 0.2 * fade);
+          flashColor = '#ffd166';
+        } else if (effect.type === 'lightning') {
+          shakeStrength = Math.max(shakeStrength, 4.5 * fade);
+          flashStrength = Math.max(flashStrength, 0.14 * fade);
+          flashColor = '#aefaff';
+        } else if (effect.type === 'fire') {
+          flashStrength = Math.max(flashStrength, 0.05 * fade);
+          flashColor = flashColor === '#ffffff' ? '#ffb703' : flashColor;
+        } else if (effect.type === 'heal') {
+          flashStrength = Math.max(flashStrength, 0.05 * fade);
+          flashColor = flashColor === '#ffffff' ? '#b7efc5' : flashColor;
+        }
+      }
+
+      const shakeX = shakeStrength > 0 ? Math.sin(now * 0.09) * shakeStrength : 0;
+      const shakeY = shakeStrength > 0 ? Math.cos(now * 0.13) * shakeStrength * 0.7 : 0;
+      const cameraX = Math.round(width / 2 - (engine.player.x + 0.5) * activeTileSize + shakeX);
+      const cameraY = Math.round(height / 2 - (engine.player.y + 0.5) * activeTileSize + shakeY);
 
       ctx.save();
       ctx.translate(cameraX, cameraY);
@@ -84,48 +113,52 @@ export const DungeonCanvas: React.FC<Props> = ({ engine, onTileClick, tileSize =
         }
       }
 
-      // 2. Render Items (only if tile is visible or seen)
+      // 2. Render Items (visible tiles bright, remembered tiles slightly dimmed)
       for (const itemObj of engine.floor.items) {
         const tile = engine.floor.tiles[itemObj.y]?.[itemObj.x];
         if (tile && (tile.visible || tile.seen)) {
           const px = itemObj.x * activeTileSize;
           const py = itemObj.y * activeTileSize;
           ctx.save();
-          if (!tile.visible) ctx.globalAlpha = 0.5;
+          ctx.globalAlpha = tile.visible ? 1 : 0.85;
           drawItem(ctx, px, py, activeTileSize, itemObj.item);
           ctx.restore();
         }
       }
 
-      // 3. Render Monsters (only if in visible tiles)
+      // 3. Render Monsters (bright inside FOV, ghostly where already explored)
       for (const monster of engine.floor.monsters) {
         const tile = engine.floor.tiles[monster.y]?.[monster.x];
-        if (tile && tile.visible) {
-          const px = monster.x * activeTileSize;
-          const py = monster.y * activeTileSize;
-          drawMonster(
-            ctx,
-            px,
-            py,
-            activeTileSize,
-            monster.spriteKey,
-            monster.isBoss,
-            (monster.sleeping || 0) > 0
-          );
+        if (!tile || (!tile.visible && !tile.seen)) continue;
 
-          // Monster HP Bar (thin retro health line)
-          if (monster.hp < monster.maxHp) {
-            const hpRatio = Math.max(0, monster.hp / monster.maxHp);
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(px + 4, py - 4, activeTileSize - 8, 4);
-            ctx.fillStyle = hpRatio > 0.5 ? '#52b788' : hpRatio > 0.25 ? '#ffd166' : '#e63946';
-            ctx.fillRect(px + 4, py - 4, (activeTileSize - 8) * hpRatio, 4);
-          }
+        const px = monster.x * activeTileSize;
+        const py = monster.y * activeTileSize;
+
+        ctx.save();
+        // Enemies previously seen stay visible as a dim memory instead of vanishing.
+        if (!tile.visible) ctx.globalAlpha = 0.45;
+        drawMonster(
+          ctx,
+          px,
+          py,
+          activeTileSize,
+          monster.spriteKey,
+          monster.isBoss,
+          (monster.sleeping || 0) > 0
+        );
+        ctx.restore();
+
+        // Monster HP Bar (thin retro health line, only for enemies in sight)
+        if (tile.visible && monster.hp < monster.maxHp) {
+          const hpRatio = Math.max(0, monster.hp / monster.maxHp);
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(px + 4, py - 4, activeTileSize - 8, 4);
+          ctx.fillStyle = hpRatio > 0.5 ? '#52b788' : hpRatio > 0.25 ? '#ffd166' : '#e63946';
+          ctx.fillRect(px + 4, py - 4, (activeTileSize - 8) * hpRatio, 4);
         }
       }
 
       // 4. Render Hero with equipment
-      const now = Date.now();
       const heroPx = engine.player.x * activeTileSize;
       const heroPy = engine.player.y * activeTileSize;
       const isAttacking = engine.visualEffects.some(
@@ -176,7 +209,7 @@ export const DungeonCanvas: React.FC<Props> = ({ engine, onTileClick, tileSize =
 
         const ex = effect.x * activeTileSize + activeTileSize / 2;
         const ey = effect.y * activeTileSize + activeTileSize / 2;
-        drawVisualEffect(ctx, ex, ey, effect.type, progress);
+        drawVisualEffect(ctx, ex, ey, effect.type, progress, effect.createdAt);
       }
 
       // 6. Render Floating Texts (Damage numbers, EXP)
@@ -203,12 +236,22 @@ export const DungeonCanvas: React.FC<Props> = ({ engine, onTileClick, tileSize =
 
       ctx.restore();
 
+      // Full-screen magic flash overlay (drawn outside the camera transform)
+      if (flashStrength > 0.01) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.min(0.32, flashStrength);
+        ctx.fillStyle = flashColor;
+        ctx.fillRect(0, 0, width, height);
+        ctx.restore();
+      }
+
       animId = requestAnimationFrame(render);
     };
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [engine]);
+  }, [engine, currentTileSize]);
 
   const lastTouchTimeRef = useRef<number>(0);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -510,58 +553,273 @@ function drawTrap(ctx: CanvasRenderingContext2D, px: number, py: number, size: n
   ctx.restore();
 }
 
+// Small deterministic PRNG so effects keep the same shape while they animate
+function seededRandom(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function drawVisualEffect(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   type: string,
-  progress: number
+  progress: number,
+  seed: number = 1
 ) {
+  const p = Math.max(0, Math.min(1, progress));
+  const fade = 1 - p;
+  const rand = seededRandom(Math.floor(seed) + 9973);
+
   ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
   if (type === 'slash') {
-    // Arcing white/yellow sword slash
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 4 * (1 - progress);
-    ctx.beginPath();
-    ctx.arc(cx, cy, 20 * progress + 5, -Math.PI * 0.75, Math.PI * 0.25);
-    ctx.stroke();
+    // Layered crescent sword slash with a bright blade streak and impact sparks
+    ctx.translate(cx, cy);
+    ctx.rotate(-1.15 + p * 1.9);
+
+    for (let i = 0; i < 3; i++) {
+      ctx.strokeStyle = i === 0 ? '#ffffff' : i === 1 ? '#ffe66d' : '#7bf1ff';
+      ctx.lineWidth = Math.max(0.5, (5 - i * 1.5) * fade);
+      ctx.beginPath();
+      ctx.arc(0, 0, 15 + p * 17 + i * 4, -1.15, 0.65);
+      ctx.stroke();
+    }
+
+    // Blade flare streak
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.7 * fade})`;
+    ctx.fillRect(-2, -28 - p * 10, 4, 56 + p * 20);
+
+    // Sparks flying out of the impact point
+    for (let i = 0; i < 10; i++) {
+      const angle = rand() * Math.PI * 2;
+      const dist = (6 + rand() * 24) * (0.35 + p * 1.2);
+      const size = 1.5 + rand() * 2.5;
+      ctx.fillStyle = `rgba(255, ${210 + Math.floor(rand() * 45)}, 120, ${fade})`;
+      ctx.fillRect(Math.cos(angle) * dist - size / 2, Math.sin(angle) * dist - size / 2, size, size);
+    }
   } else if (type === 'fire') {
-    // Expanding fire flare
-    const radius = 24 * progress;
-    ctx.fillStyle = progress < 0.5 ? '#ff5722' : '#ffb703';
-    ctx.globalAlpha = 1 - progress;
+    // Roaring fireball: hot core, flame tongues, shockwave ring, and rising embers
+    const radius = 13 + 30 * p;
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    glow.addColorStop(0, `rgba(255, 255, 245, ${0.95 * fade})`);
+    glow.addColorStop(0.25, `rgba(255, 240, 150, ${0.85 * fade})`);
+    glow.addColorStop(0.55, `rgba(255, 130, 35, ${0.6 * fade})`);
+    glow.addColorStop(1, 'rgba(180, 20, 0, 0)');
+    ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
+
+    // Licking flame tongues
+    for (let i = 0; i < 7; i++) {
+      const angle = rand() * Math.PI * 2;
+      const baseDist = 5 + rand() * 9;
+      const height = (18 + rand() * 20) * (0.5 + p * 0.9);
+      const width = 4 + rand() * 5;
+      const bx = cx + Math.cos(angle) * baseDist;
+      const by = cy + Math.sin(angle) * baseDist;
+      ctx.fillStyle = i % 2 === 0 ? `rgba(255, 120, 25, ${0.75 * fade})` : `rgba(255, 205, 70, ${0.7 * fade})`;
+      ctx.beginPath();
+      ctx.moveTo(bx - width / 2, by);
+      ctx.quadraticCurveTo(bx + width * 0.2, by - height, bx + width / 2, by);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Expanding shockwave ring
+    ctx.strokeStyle = `rgba(255, 180, 60, ${0.8 * fade})`;
+    ctx.lineWidth = Math.max(1, 3 * fade);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 8 + 36 * p, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Embers
+    for (let i = 0; i < 12; i++) {
+      const angle = rand() * Math.PI * 2;
+      const dist = (5 + rand() * 34) * (0.3 + p * 1.2);
+      const size = 1.5 + rand() * 2.5;
+      ctx.fillStyle = `rgba(255, ${150 + Math.floor(rand() * 90)}, 60, ${fade})`;
+      ctx.fillRect(cx + Math.cos(angle) * dist - size / 2, cy + Math.sin(angle) * dist - p * 8 - size / 2, size, size);
+    }
   } else if (type === 'heal') {
-    // Green sparkle chime
-    ctx.fillStyle = '#52b788';
-    ctx.globalAlpha = 1 - progress;
-    for (let i = 0; i < 6; i++) {
-      const angle = (i * Math.PI) / 3 + progress * 2;
-      const dist = 18 * progress;
-      const sx = cx + Math.cos(angle) * dist;
-      const sy = cy + Math.sin(angle) * dist;
-      ctx.fillRect(sx - 2, sy - 2, 4, 4);
+    // Holy light pillar, rotating rune ring, and rising plus-shaped sparkles
+    const radius = 24 + 18 * p;
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    glow.addColorStop(0, `rgba(230, 255, 235, ${0.8 * fade})`);
+    glow.addColorStop(0.45, `rgba(110, 240, 170, ${0.45 * fade})`);
+    glow.addColorStop(1, 'rgba(40, 180, 120, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Light column rising from the hero
+    const beam = ctx.createLinearGradient(cx, cy - 76, cx, cy + 12);
+    beam.addColorStop(0, 'rgba(190, 255, 210, 0)');
+    beam.addColorStop(0.4, `rgba(200, 255, 220, ${0.35 * fade})`);
+    beam.addColorStop(1, `rgba(255, 255, 255, ${0.55 * fade})`);
+    ctx.fillStyle = beam;
+    ctx.fillRect(cx - 11, cy - 76, 22, 88);
+
+    // Rotating ring of runes
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(p * Math.PI * 1.6);
+    for (let i = 0; i < 8; i++) {
+      const angle = (i * Math.PI) / 4;
+      const dist = 20 + p * 10;
+      const sx = Math.cos(angle) * dist;
+      const sy = Math.sin(angle) * dist;
+      ctx.fillStyle = i % 2 === 0 ? `rgba(255, 245, 170, ${fade})` : `rgba(140, 255, 200, ${fade})`;
+      ctx.fillRect(sx - 1.5, sy - 6, 3, 12);
+      ctx.fillRect(sx - 6, sy - 1.5, 12, 3);
+    }
+    ctx.restore();
+
+    // Ring pulse
+    ctx.strokeStyle = `rgba(140, 255, 200, ${0.8 * fade})`;
+    ctx.lineWidth = Math.max(1, 2.5 * fade);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 14 + 30 * p, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Rising sparkles
+    for (let i = 0; i < 10; i++) {
+      const angle = rand() * Math.PI * 2;
+      const dist = (4 + rand() * 22) * p;
+      const rise = p * (26 + rand() * 26);
+      const size = 2 + rand() * 2.5;
+      ctx.fillStyle = i % 2 === 0 ? `rgba(190, 255, 220, ${fade})` : `rgba(255, 240, 160, ${fade})`;
+      ctx.fillRect(cx + Math.cos(angle) * dist - size / 2, cy + Math.sin(angle) * dist - rise - size / 2, size, size);
     }
   } else if (type === 'lightning') {
-    // Violent jagged lightning bolt
-    ctx.strokeStyle = '#00f5d4';
-    ctx.lineWidth = 3;
+    // Electric storm: core glow, branching bolts, crackling ring, and stray sparks
+    const radius = 22 + 24 * p;
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    glow.addColorStop(0, `rgba(255, 255, 255, ${0.85 * fade})`);
+    glow.addColorStop(0.35, `rgba(110, 250, 255, ${0.55 * fade})`);
+    glow.addColorStop(1, 'rgba(0, 120, 255, 0)');
+    ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.moveTo(cx, cy - 20);
-    ctx.lineTo(cx + (Math.random() * 8 - 4), cy - 5);
-    ctx.lineTo(cx - (Math.random() * 8 - 4), cy + 5);
-    ctx.lineTo(cx, cy + 20);
-    ctx.stroke();
-  } else if (type === 'explosion') {
-    // Intense radial blast
-    const r = 32 * progress;
-    ctx.fillStyle = '#d90429';
-    ctx.globalAlpha = 1 - progress;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
+
+    // Jagged main bolts
+    for (let bolt = 0; bolt < 3; bolt++) {
+      const offset = bolt * 2 - 2;
+      ctx.strokeStyle = bolt === 0 ? `rgba(255, 255, 255, ${fade})` : `rgba(90, 240, 255, ${0.9 * fade})`;
+      ctx.lineWidth = bolt === 0 ? 2.5 : 5 * fade;
+      ctx.beginPath();
+      ctx.moveTo(cx + offset * 3, cy - 36 - bolt * 4);
+      for (let s = 1; s <= 6; s++) {
+        const jitter = (rand() * 2 - 1) * (10 + bolt * 4);
+        ctx.lineTo(cx + offset * 3 + jitter, cy - 36 + s * 12);
+      }
+      ctx.stroke();
+
+      // Side branches
+      ctx.lineWidth = 1.5;
+      for (let b = 0; b < 2; b++) {
+        const branchY = cy - 18 + b * 18;
+        ctx.beginPath();
+        ctx.moveTo(cx + offset * 3, branchY);
+        ctx.lineTo(cx + offset * 3 + (rand() * 2 - 1) * 24, branchY - 8 - rand() * 8);
+        ctx.stroke();
+      }
+    }
+
+    // Electric ring
+    ctx.strokeStyle = `rgba(150, 250, 255, ${0.75 * fade})`;
+    ctx.lineWidth = Math.max(1, 2.5 * fade);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 12 + 30 * p, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Sparks
+    for (let i = 0; i < 10; i++) {
+      const angle = rand() * Math.PI * 2;
+      const dist = (8 + rand() * 28) * (0.3 + p);
+      const size = 1.5 + rand() * 2.5;
+      ctx.fillStyle = `rgba(190, 255, 255, ${fade})`;
+      ctx.fillRect(cx + Math.cos(angle) * dist - size / 2, cy + Math.sin(angle) * dist - size / 2, size, size);
+    }
+  } else if (type === 'explosion') {
+    // Massive detonation: blinding core, layered fireball, double shockwave, and debris
+    const radius = 14 + 46 * p;
+    const blast = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    blast.addColorStop(0, `rgba(255, 255, 255, ${fade})`);
+    blast.addColorStop(0.18, `rgba(255, 245, 170, ${0.95 * fade})`);
+    blast.addColorStop(0.45, `rgba(255, 150, 40, ${0.8 * fade})`);
+    blast.addColorStop(0.72, `rgba(220, 40, 15, ${0.55 * fade})`);
+    blast.addColorStop(1, 'rgba(90, 0, 0, 0)');
+    ctx.fillStyle = blast;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // White-hot inner core
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.85 * fade})`;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(2, 16 * fade), 0, Math.PI * 2);
+    ctx.fill();
+
+    // Double shockwave rings
+    for (let ring = 0; ring < 2; ring++) {
+      ctx.strokeStyle = ring === 0 ? `rgba(255, 230, 140, ${0.9 * fade})` : `rgba(255, 120, 50, ${0.6 * fade})`;
+      ctx.lineWidth = Math.max(1, (4 - ring * 1.5) * fade);
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * (0.75 + ring * 0.35), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Flying debris / sparks
+    for (let i = 0; i < 16; i++) {
+      const angle = rand() * Math.PI * 2;
+      const dist = (8 + rand() * 46) * (0.25 + p * 1.25);
+      const size = 2 + rand() * 3.5;
+      ctx.fillStyle = i % 3 === 0 ? `rgba(255, 255, 210, ${fade})` : `rgba(255, ${100 + Math.floor(rand() * 120)}, 40, ${fade})`;
+      ctx.fillRect(cx + Math.cos(angle) * dist - size / 2, cy + Math.sin(angle) * dist - size / 2, size, size);
+    }
+  } else if (type === 'spark') {
+    // Radiant eight-point star burst
+    const radius = 10 + 26 * p;
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    glow.addColorStop(0, `rgba(255, 255, 255, ${0.8 * fade})`);
+    glow.addColorStop(0.5, `rgba(120, 220, 255, ${0.45 * fade})`);
+    glow.addColorStop(1, 'rgba(80, 120, 255, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(220, 245, 255, ${0.85 * fade})`;
+    ctx.lineWidth = Math.max(1, 2 * fade);
+    for (let i = 0; i < 8; i++) {
+      const angle = (i * Math.PI) / 4 + p * 0.5;
+      const inner = 4 + p * 6;
+      const outer = 12 + p * 26;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+      ctx.lineTo(cx + Math.cos(angle) * outer, cy + Math.sin(angle) * outer);
+      ctx.stroke();
+    }
+
+    for (let i = 0; i < 8; i++) {
+      const angle = rand() * Math.PI * 2;
+      const dist = (4 + rand() * 20) * p;
+      const size = 1.5 + rand() * 2;
+      ctx.fillStyle = `rgba(255, 255, 255, ${fade})`;
+      ctx.fillRect(cx + Math.cos(angle) * dist - size / 2, cy + Math.sin(angle) * dist - size / 2, size, size);
+    }
   }
+
   ctx.restore();
 }

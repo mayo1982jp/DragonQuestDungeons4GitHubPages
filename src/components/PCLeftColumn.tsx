@@ -32,6 +32,9 @@ export const PCLeftColumn: React.FC<Props> = ({ engine, onActionComplete }) => {
 
   const handleUse = (item: Item) => {
     engine.useItem(item);
+    // Auto-sorting may move the item; keep it selected for the next action.
+    const nextIndex = engine.player.inventory.findIndex((i) => i.id === item.id);
+    if (nextIndex >= 0) setSelectedItemIndex(nextIndex);
     onActionComplete();
   };
 

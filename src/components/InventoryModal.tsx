@@ -24,8 +24,19 @@ export const InventoryModal: React.FC<Props> = ({ engine, isOpen, onClose, onAct
   const selectedItem: Item | undefined = items[selectedIndex] || items[0];
   const floorItemAtFeet = engine.getFloorItemAtFeet();
 
+  // Always present a tidy bag: equipped gear first, then weapons/armour/consumables.
+  useEffect(() => {
+    if (isOpen) {
+      engine.autoSortInventory();
+      setSelectedIndex(0);
+    }
+  }, [isOpen, engine]);
+
   const handleUse = (item: Item) => {
     engine.useItem(item);
+    // Sorting may move the item; keep the same item selected afterwards.
+    const nextIndex = engine.player.inventory.findIndex((i) => i.id === item.id);
+    if (nextIndex >= 0) setSelectedIndex(nextIndex);
     onActionComplete();
   };
 
@@ -70,6 +81,9 @@ export const InventoryModal: React.FC<Props> = ({ engine, isOpen, onClose, onAct
         <div className="flex items-center justify-between border-b-2 border-white/40 pb-2 mb-3">
           <div className="flex items-center gap-2">
             <span className="text-amber-300 text-lg font-bold">【 どうぐ・そうび 】</span>
+            <span className="text-[10px] text-amber-300 bg-neutral-900 border border-amber-400/50 px-1.5 py-0.5 rounded font-bold">
+              自動整頓
+            </span>
             <span className="text-xs text-white/60">
               ({items.length} / {engine.player.maxInventory})
             </span>

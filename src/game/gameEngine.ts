@@ -144,14 +144,22 @@ export class GameEngine {
     });
   }
 
-  public addVisualEffect(type: VisualEffect['type'], x: number, y: number) {
+  public addVisualEffect(type: VisualEffect['type'], x: number, y: number, duration?: number) {
+    const defaultDurations: Record<VisualEffect['type'], number> = {
+      slash: 320,
+      spark: 480,
+      fire: 560,
+      heal: 720,
+      lightning: 700,
+      explosion: 850,
+    };
     this.visualEffects.push({
       id: `ve_${Date.now()}_${Math.random()}`,
       type,
       x,
       y,
       createdAt: Date.now(),
-      duration: 350,
+      duration: duration ?? defaultDurations[type],
     });
   }
 
@@ -727,6 +735,7 @@ export class GameEngine {
         this.removeItemFromInventory(prevEquipped.id);
       }
       this.player.inventory.push(item);
+      this.autoSortInventory();
       soundEngine.playEquip();
       this.addLog(`足元の ${item.name} を直接そうびした！`, 'item');
       this.endTurn();
@@ -856,6 +865,9 @@ export class GameEngine {
         this.addLog(`${item.name} を装備した！`, 'item');
       }
     }
+
+    // 装備状態が変わったら常に自動整頓して装備品を先頭へ揃える
+    this.autoSortInventory();
   }
 
   public syncEquipment(): void {
@@ -885,6 +897,7 @@ export class GameEngine {
         }
       }
     }
+    this.autoSortInventory();
   }
 
   public readScroll(scroll: Item): void {
@@ -1123,6 +1136,8 @@ export class GameEngine {
       const offset = DIR_OFFSETS[this.player.direction];
       let fx = this.player.x;
       let fy = this.player.y;
+      // Muzzle flash at the caster's feet so the spell always looks powerful
+      this.addVisualEffect('fire', this.player.x, this.player.y, 420);
       for (let i = 0; i < (spell.range || 4); i++) {
         fx += offset.x;
         fy += offset.y;
@@ -1180,6 +1195,14 @@ export class GameEngine {
         }
       }
     } else if (spell.effectType === 'explosion') {
+      // Roaring detonation centered on the hero, even when the room is empty
+      this.addVisualEffect('explosion', this.player.x, this.player.y);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          this.addVisualEffect('explosion', this.player.x + dx, this.player.y + dy, 620 + Math.random() * 240);
+        }
+      }
       // All monsters in room
       for (const m of this.floor.monsters) {
         const tile = this.floor.tiles[m.y]?.[m.x];

@@ -287,6 +287,15 @@ export const GameScreen: React.FC<Props> = ({
         return;
       }
 
+      // Touching the stairs tile walks there and automatically descends on arrival.
+      const isStairsTarget =
+        tx === engine.floor.stairsPos.x && ty === engine.floor.stairsPos.y;
+      const finishAtStairs = () => {
+        if (isStairsTarget && engine.isPlayerOnStairs() && !engine.isGameOver && !engine.isGameClear) {
+          handleDescendStairs();
+        }
+      };
+
       // 2. Touched adjacent monster -> Attack monster immediately
       const adjacentMonster = engine.floor.monsters.find(
         (m) =>
@@ -316,6 +325,7 @@ export const GameScreen: React.FC<Props> = ({
         else if (dx === -1 && dy === 0) dir = 'W';
         else if (dx === -1 && dy === -1) dir = 'NW';
         handleMove(dir, false);
+        finishAtStairs();
         return;
       }
 
@@ -347,6 +357,12 @@ export const GameScreen: React.FC<Props> = ({
         const moved = engine.movePlayer(firstDir);
         forceUpdate();
         if (!moved || pathQueue.length === 0 || engine.isGameOver || engine.isGameClear) {
+          finishAtStairs();
+          return;
+        }
+
+        if (engine.isPlayerOnStairs() && isStairsTarget) {
+          finishAtStairs();
           return;
         }
 
@@ -364,12 +380,19 @@ export const GameScreen: React.FC<Props> = ({
           engine.isGameOver ||
           engine.isGameClear
         ) {
+          finishAtStairs();
           stopAutoWalk();
           return;
         }
 
-        // Stop if reached stairs or item
-        if (engine.isPlayerOnStairs() || engine.getFloorItemAtPlayer()) {
+        // Auto-walk normally stops at stairs/items, but a stairs destination keeps going.
+        if (!isStairsTarget && (engine.isPlayerOnStairs() || engine.getFloorItemAtPlayer())) {
+          stopAutoWalk();
+          return;
+        }
+
+        if (isStairsTarget && engine.isPlayerOnStairs()) {
+          finishAtStairs();
           stopAutoWalk();
           return;
         }
@@ -390,6 +413,7 @@ export const GameScreen: React.FC<Props> = ({
         forceUpdate();
 
         if (!ok || pathQueue.length === 0) {
+          finishAtStairs();
           stopAutoWalk();
         }
       }, 75);
@@ -667,7 +691,7 @@ export const GameScreen: React.FC<Props> = ({
       />
 
       {/* Main Layout Area: Left Column (Inventory + Logs) + Center Canvas Viewport + Right Column (Status & Minimap) */}
-      <div className="relative flex-1 flex w-full h-full overflow-hidden">
+      <div className="relative flex-1 min-h-0 flex w-full h-full overflow-hidden">
         {/* Permanent Left Column (Desktop / PC Only): 所持品どうぐ & 冒険の記録 */}
         <div className="hidden lg:block h-full shrink-0">
           <PCLeftColumn
@@ -677,8 +701,8 @@ export const GameScreen: React.FC<Props> = ({
         </div>
 
         {/* Viewport Canvas container (Center) */}
-        <main className="relative flex-1 h-full overflow-hidden bg-neutral-950 flex flex-col justify-between">
-          <div className="relative w-full flex-1 overflow-hidden">
+        <main className="relative flex-1 min-h-0 h-full overflow-hidden bg-neutral-950 flex flex-col justify-between">
+          <div className="relative w-full flex-1 min-h-0 overflow-hidden">
             <DungeonCanvas
               engine={engine}
               onTileClick={handleTileClick}
@@ -719,15 +743,17 @@ export const GameScreen: React.FC<Props> = ({
                 engine={engine}
                 expanded={isMinimapExpanded}
                 onToggleExpand={() => setIsMinimapExpanded((v) => !v)}
+                follow
               />
             </div>
 
-            {/* Log Box bottom-left (Displayed only on mobile/tablet when Left Column is hidden) */}
-            <div className="lg:hidden absolute bottom-2 left-2 right-2 sm:right-auto sm:w-[420px] z-20 pointer-events-auto">
+            {/* Log Box bottom-left (mobile: auto-hides after 5 seconds) */}
+            <div className="lg:hidden absolute bottom-2 left-2 right-2 sm:right-auto sm:w-[420px] z-20 pointer-events-none">
               <LogBox
                 logs={engine.logs}
                 expanded={isLogExpanded}
                 onToggleExpand={() => setIsLogExpanded((v) => !v)}
+                autoHideMs={5000}
               />
             </div>
           </div>
