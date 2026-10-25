@@ -108,8 +108,16 @@ export const SaveLoadModal: React.FC<Props> = ({ engine, isOpen, onClose, onLoad
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 select-none font-['DotGothic16'] animate-fade-in">
-      <div className="relative w-full max-w-lg bg-black border-4 border-amber-500 rounded-lg p-4 text-white shadow-2xl flex flex-col max-h-[90vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 select-none font-['DotGothic16'] animate-fade-in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="relative w-full max-w-lg bg-black border-4 border-amber-500 rounded-lg p-4 text-white shadow-2xl flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b-2 border-amber-500/50 pb-2 mb-3">
           <span className="text-amber-300 text-base sm:text-lg font-bold">【 冒険の書（セーブ管理） 】</span>

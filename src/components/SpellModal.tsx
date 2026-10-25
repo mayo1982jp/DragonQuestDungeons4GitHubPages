@@ -74,8 +74,16 @@ export const SpellModal: React.FC<Props> = ({ engine, isOpen, onClose, onActionC
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 select-none font-['DotGothic16'] animate-fade-in">
-      <div className="relative w-full max-w-lg bg-black border-4 border-white/90 rounded-lg p-4 text-white shadow-2xl flex flex-col max-h-[85vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 select-none font-['DotGothic16'] animate-fade-in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="relative w-full max-w-lg bg-black border-4 border-white/90 rounded-lg p-4 text-white shadow-2xl flex flex-col max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b-2 border-white/40 pb-2 mb-3">
           <div className="flex items-center gap-2">
