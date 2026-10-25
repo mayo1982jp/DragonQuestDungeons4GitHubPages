@@ -665,10 +665,6 @@ export const GameScreen: React.FC<Props> = ({
     stopAutoWalk,
   ]);
 
-  const isPlayerOnStairs =
-    engine.player.x === engine.floor.stairsPos.x &&
-    engine.player.y === engine.floor.stairsPos.y;
-
   const floorItemAtFeet = engine.getFloorItemAtPlayer();
 
   return (
@@ -758,17 +754,13 @@ export const GameScreen: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Optional Virtual Pad (toggled via header or on mobile) */}
+          {/* Optional mobile action bar (toggled via header or on mobile) */}
           {showPad && (
             <div className="w-full shrink-0 border-t border-white/40">
               <VirtualPad
-                onMove={(dir) => handleMove(dir, false)}
-                onAttack={handleAttack}
                 onOpenInventory={() => setIsInventoryOpen(true)}
                 onOpenSpells={() => setIsSpellOpen(true)}
                 onOpenSaveModal={() => setIsSaveOpen(true)}
-                onDescendStairs={handleDescendStairs}
-                isPlayerOnStairs={isPlayerOnStairs}
               />
             </div>
           )}

@@ -49,10 +49,10 @@ export const LogBox: React.FC<Props> = ({
     <div
       aria-hidden={autoHideMs ? !isVisible : undefined}
       className={`bg-black/95 border-2 border-white/80 rounded p-2 text-white font-['DotGothic16'] shadow-xl select-none transition-all duration-500 ${
-        expanded ? 'fixed inset-x-4 bottom-20 z-40 max-h-60' : 'log-box h-[4.75rem] sm:h-[5.5rem]'
+        expanded ? 'fixed inset-x-4 bottom-20 z-40 max-h-60' : 'log-box h-[5.75rem] sm:h-[6.5rem]'
       } ${autoHideMs && !isVisible ? 'opacity-0 pointer-events-none -translate-y-1' : 'opacity-100 pointer-events-auto'}`}
     >
-      <div className="log-header flex items-center justify-between border-b border-white/20 pb-1 mb-1 text-[11px] text-white/60 shrink-0">
+      <div className="log-header flex items-center justify-between border-b border-white/20 pb-1 mb-1 text-xs text-white/70 shrink-0">
         <span className="font-bold text-amber-300">【 冒険の記録 】</span>
         <button
           onClick={onToggleExpand}
@@ -64,8 +64,8 @@ export const LogBox: React.FC<Props> = ({
 
       <div
         ref={containerRef}
-        className={`overflow-y-auto space-y-0.5 text-xs leading-snug pr-1 select-text scrollbar-thin ${
-          expanded ? 'max-h-48' : 'log-list h-[2.5rem] sm:h-[3.25rem]'
+        className={`overflow-y-auto space-y-1 text-sm sm:text-[15px] leading-relaxed pr-1 select-text scrollbar-thin ${
+          expanded ? 'max-h-48' : 'log-list h-[3.5rem] sm:h-[4.15rem]'
         }`}
       >
         {displayLogs.map((log) => (
